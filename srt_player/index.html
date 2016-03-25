@@ -1,0 +1,376 @@
+<!doctype html>
+<html>
+<head>
+<meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
+<title>SRT SubTitle Player</title>
+<script type="text/javascript">
+function $(id)
+{
+  return document.getElementById(id);
+}
+
+oFReader = new FileReader();
+
+oFReader.onload = function(evt)
+{
+  parseSub(evt.target.result);
+  var status = '';
+  status = '<b>File</b>: ' + SUB_FILE;
+  status += ' &nbsp; <b>Count</b>: ' + SUB_LIST.length;
+  if (SUB_LIST.length > 0)
+  {
+    status += ' &nbsp; <b>Time</b>: ' + time_to_str(SUB_LIST[SUB_LIST.length - 1].ed);
+  }
+
+  $('status').innerHTML = status;
+};
+
+function selectFile()
+{
+  if (SUB_PLAY)
+  {
+    sub_start_pause();
+  }
+  var file = $("sub");
+  file.click();
+}
+
+function loadFile()
+{
+  var file = $("sub");
+  if (file.files.length > 0)
+  {
+    SUB_FILE = file.files[0].name;
+    oFReader.readAsText(file.files[0]);
+  }
+}
+
+var SUB_FILE;
+var SUB_LIST;
+var SHOW_ELM = null;
+var CURRENT_INPUT = null;
+
+function parseSub(data)
+{
+  SUB_LIST = [];
+  data = data.split('\n');
+
+  var idxRegx = /^\d+$/;
+  var timeRegx = /^(\d+):(\d+):(\d+),(\d+) --> (\d+):(\d+):(\d+),(\d+)$/;
+
+  var line;
+  var it = null;
+  for (line of data)
+  {
+    line = line.trim();
+    if (it)
+    {
+      if (it.ed === 0)
+      {
+        line = timeRegx.exec(line);
+        if (line)
+        {
+          it.st = (line[1] * 3600 + line[2] * 60 + (+line[3])) * 1000 + (+line[4]);
+          it.ed = (line[5] * 3600 + line[6] * 60 + (+line[7])) * 1000 + (+line[8]);
+        }
+        else
+        {
+          // wrong format
+          it = null;
+        }
+      }
+      else if (line != '')
+      {
+        it.sub += line + '\n';
+      }
+      else
+      {
+        it.sub = it.sub.slice(0, -1);
+        SUB_LIST.push(it);
+        it = null;
+      }
+    }
+    else if (idxRegx.test(line))
+    {
+      it = {
+        id: +line,
+        st: 0,
+        ed: 0,
+        sub: ''
+      };
+    }
+  }
+
+  // sort the subtitle by start time
+  SUB_LIST.sort(sort_by_st);
+
+  sub_env.current = 0;
+  sub_env.index = 0;
+  sub_env.offset = 0;
+  SHOW_ELM.innerHTML = '';
+}
+function sort_by_st(a,b){
+  return (a.st - b.st);
+}
+
+
+var SUB_PLAY = false;
+var sub_env = {
+  'start': 0,
+  'current': 0,
+  'offset': 0,
+  'ratio': (+localStorage.sub_ratio || 1),
+  'index': 0
+};
+function sub_start_pause()
+{
+  if (SUB_PLAY)
+  {
+    clearInterval(SUB_PLAY);
+    SUB_PLAY = 0;
+  }
+  else if (!SUB_LIST || sub_env.index >= SUB_LIST.length)
+  {
+    // play end
+    alert(SUB_LIST ? 'Play End' : 'Load SubTitle first!');
+  }
+  else
+  {
+    // start to play
+    var now = Date.now();
+    sub_env.start = now - sub_env.current;
+
+    SUB_PLAY = setInterval(sub_player, 100);
+    sub_player();
+  }
+}
+
+function sub_tweek(time)
+{
+  sub_env.offset += time;
+  $('offset').value = sub_env.offset;
+}
+
+function sub_move(time)
+{
+  if (SUB_PLAY)
+  {
+    sub_env.start -= time;
+  }
+  else
+  {
+    sub_env.current = Math.max(0, sub_env.current + time);
+    CURRENT_INPUT.value = time_to_str(sub_env.current);
+  }
+}
+
+function sub_change_ratio(ratio)
+{
+  ratio = +ratio;
+  if (ratio > 0)
+  {
+    sub_env.ratio = ratio;
+    localStorage.sub_ratio = ratio;
+  }
+}
+
+function sub_jump(time)
+{
+  var ms = /((\d+):)?(\d+):(\d+)(,(\d+))?/.exec(time);
+
+  if (SUB_LIST && SUB_LIST.length > 0 && ms)
+  {
+    if (ms[6])
+    {
+      ms[6] = +(ms[6] + '00').slice(0,3);
+    }
+    ms = (ms[2]||0) * 36e5 + ms[3] * 6e4 + ms[4] * 1e3 + (ms[6] || 0);
+
+    var playing = SUB_PLAY;
+    if (SUB_PLAY)
+    {
+      sub_start_pause();
+    }
+
+    // set current time
+    sub_env.current = ms;
+
+    // find next index
+    ms += sub_env.offset;
+    ms *= sub_env.ratio;
+
+    for (var i = 0; i < SUB_LIST.length; i++)
+    {
+      if (SUB_LIST[i].st >= ms || SUB_LIST[i].ed > ms)
+      {
+        break;
+      }
+    }
+    sub_env.index = i;
+
+    if (playing)
+    {
+      sub_start_pause();
+    }
+    else
+    {
+      var now = Date.now();
+      sub_env.start = now - sub_env.current;
+      sub_player();
+    }
+  }
+}
+
+function sub_player()
+{
+  var now = Date.now() - sub_env.start;
+  // update current time box
+  sub_env.current = now;
+  CURRENT_INPUT.value = time_to_str(now);
+
+  // add offset time
+  now += sub_env.offset
+  now *= sub_env.ratio;
+
+  var div, it, i;
+
+  // check last subtitle elm time end
+  for (i = SHOW_ELM.children.length; i-- > 0;)
+  {
+    div = SHOW_ELM.children[i];
+    it = SUB_LIST[div.sid];
+    if (!it || it.ed <= now || it.st > now)
+    {
+      SHOW_ELM.removeChild(div);
+    }
+  }
+
+  // check start time
+  for (i = sub_env.index; i < SUB_LIST.length; i++)
+  {
+    it = SUB_LIST[i];
+    if (it.st <= now)
+    {
+      div = document.createElement('div');
+      div.className = 'sub c' + (i % 3);
+      div.sid = i;
+      div.innerText = it.sub;
+      SHOW_ELM.appendChild(div);
+    }
+    else
+    {
+      break;
+    }
+  }
+  sub_env.index = i;
+}
+
+function time_to_str(ms)
+{
+  var it, i;
+  it = ms % 1e3;
+  i = ('00' + it).slice(-3);
+  ms = (ms - it) / 1e3;
+
+  it = ms % 60;
+  i = ('0' + it).slice(-2) + ',' + i;
+  ms = (ms - it) / 60;
+
+  it = ms % 60;
+  i = ('0' + it).slice(-2) + ':' + i;
+
+  if (ms > it)
+  {
+    ms = (ms - it) / 60;
+    i = ms + ':' + i;
+  }
+
+  return i;
+}
+
+function on_load()
+{
+  SHOW_ELM = $('show');
+  CURRENT_INPUT = $('current');
+  CURRENT_INPUT.value = time_to_str(sub_env.current);
+  $('ratio').value = sub_env.ratio;
+  $('offset').value = sub_env.offset;
+}
+window.onload = on_load;
+
+</script>
+<style type="text/css">
+body {
+  margin: 0;
+  padding: 0;
+}
+#show {
+  margin: 10px;
+  border: 3px solid #ccc;
+  padding: 10px;
+  min-height: 100px;
+  line-height: 1.5em;
+  font-family: "Microsoft YaHei";
+  font-weight: bold;
+  font-size: 30px;
+  text-align: center;
+}
+#status {
+  font-family: "Microsoft YaHei";
+  font-size: 14px;
+}
+#control, #status {
+  padding: 20px 20px 0;
+  text-align: center;
+}
+#control button {
+  font-size: 1.5em;
+}
+#current {
+  font-size: 1.5em;
+  width: 150px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+#ratio, #offset {
+  font-size: 1.5em;
+  width: 80px;
+  text-align: center;
+}
+.c0 {
+  color: #008;
+}
+.c1 {
+  color: #800;
+}
+.c2 {
+  color: #080;
+}
+</style>
+</head>
+
+<body>
+  <div id="show"></div>
+  <div id="control">
+    <input id="sub" type="file" name="sub" onchange="loadFile();" style="display:none;" />
+    <button onclick="selectFile()">Load..</button>
+    |
+    <button onclick="sub_move(-1e4)">10&lt;</button>
+    <button onclick="sub_move(-1e3)">1&lt;</button>
+    <input id="current" type="text">
+    <button onclick="sub_move(1e3)">&gt;1</button>
+    <button onclick="sub_move(1e4)">&gt;10</button>
+    <button onclick="sub_jump(CURRENT_INPUT.value)">Jump</button>
+    <button onclick="sub_start_pause()">Start / Pause</button>
+    |
+    <button onclick="sub_tweek(-1000)">-1s</button>
+    <button onclick="sub_tweek(-500)">-0.5s</button>
+    <input id="offset" type="text">
+    <button onclick="sub_tweek(500)">+0.5s</button>
+    <button onclick="sub_tweek(1000)">+1s</button>
+    |
+    Ratio: <input id="ratio" type="text" value="1" onchange="sub_change_ratio(this.value)">
+  </div>
+  <div id="status"></div>
+</body>
+</html>
