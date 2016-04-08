@@ -1,0 +1,31 @@
+<html>
+<head>
+	<title>Test 360 F4 browser error</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+</head>
+<body>
+<textarea id="res" style="width:100%; height:300px;"></textarea>
+<hr>
+<button onclick="getSource()">get page source code</button>
+<button onclick="window.onerror=null">cancel error caught</button>
+<p>
+	Source code at: <a href="https://github.com/iwinmin/iwinmin.github.io/blob/master/360/index.html">https://github.com/iwinmin/iwinmin.github.io/blob/master/360/index.html</a>
+</p>
+<script type="text/javascript">
+var res = document.getElementById('res');
+function getSource()
+{
+	res.value = '';
+	res.value = 'HEAD:\n' + document.head.outerHTML + '\n\nBODY:\n' + document.body.outerHTML;
+}
+
+// caught script exception
+window.onerror = function(m, u, l, c, e)
+{
+
+	m = (new Date()).toLocaleString() + ' - ' + [m,u,l,c,e].join('\n');
+	res.value = m + '\n----\n' + res.value;
+}
+</script>
+</body>
+</html>
