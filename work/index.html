@@ -1,0 +1,312 @@
+<html>
+<head>
+<title>WORK-LOGGER @beta</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<script type="text/javascript">
+var CUR_START = 0;
+var CUR_TIME = 0;
+var CUR_END = 0;
+var CUR_INT = 0;
+var CUR_WORK = '';
+var TIMER = 0;
+
+// 开始记录任务
+function log_new() {
+	var data = '10 work detail';
+	var now;
+	if (CUR_TIME && CUR_WORK)
+	{
+		data = CUR_TIME + ' ' + CUR_WORK;
+	}
+
+	clearTimeout(TIMER);
+
+	while (true)
+	{
+		data = prompt('请输入计时内容: 计时分钟数 + 空格 + 工作内容说明\n取消则结束当前工作', data);
+		now = Date.now();
+
+		if (data)
+		{
+			if (data.charAt(0) == '!')
+			{
+				data = data.slice(1);
+				if (CUR_END && CUR_END < now)
+				{
+					CUR_END = now;
+				}
+			}
+
+			// process string format
+			var regx = /^(\d+)\s+(.*)$/;
+			if (regx.test(data))
+			{
+				CUR_TIME = +data.replace(regx, '$1');
+				data = data.replace(regx, '$2');
+
+				// check and log old work first
+				log_work();
+
+				// set temp var and log current temp to localstorage
+				CUR_WORK = data;
+				CUR_INT = 0;
+				CUR_START = now;
+				CUR_END = now + CUR_TIME * 60e3;
+				log_temp();
+
+				break;
+			}
+		}
+		else
+		{
+			// stop logger, and write to the localstorage
+			CUR_END = now;
+			log_work();
+			$('current').innerText = '';
+			break;
+		}
+	}
+}
+
+// 终止当前任务
+function log_cancel()
+{
+	if (CUR_START && confirm('真的要放弃当前工作任务吗?'))
+	{
+		clearTimeout(TIMER);
+
+		// log aborted work record
+		// restore aborted work content
+		log_work(CUR_WORK + ' **ABORTED**');
+		window.localStorage.date_temp = '';
+		$('current').innerText = '';
+	}
+}
+
+function log_interup()
+{
+	CUR_INT++;
+	log_temp();
+	show_infomation();
+}
+
+// 任务计时结束, 提醒用户
+function log_time_end()
+{
+	// 计时到达时间
+	if (!window.Notification || !CUR_WORK)
+	{
+		return false;
+	}
+
+	// stop timer countdown
+	if (DISPLAY_TIMER)
+	{
+		clearInterval(DISPLAY_TIMER);
+		DISPLAY_TIMER = 0;
+	}
+
+	// Let's check whether notification permissions have already been granted
+	if (Notification.permission === "granted") {
+		// If it's okay let's create a notification
+		var notify = new Notification(
+			"WORK-LOGGER TIMEOUT ALARM",
+			{
+				'body': CUR_WORK,
+				'icon': 'icon.png',
+				'requireInteraction': true,
+				'sticky': true
+			}
+		);
+		notify.onclick = on_notify_click;
+		notify.addEventListener('close', on_notify_close)
+	}
+}
+
+// 点击计时提醒内容时, 提醒结束内容
+function on_notify_click()
+{
+	this.removeEventListener('close', on_notify_close);
+	this.close();
+	window.focus();
+	log_new();
+}
+
+// 关闭提醒是, 先寻味是否要停止任务计时
+function on_notify_close()
+{
+	if (confirm('要停止任务计时吗?'))
+	{
+		log_work();
+		$('current').innerText = '';
+	}
+}
+
+function log_work(work)
+{
+	work = work || CUR_WORK;
+	if (CUR_START && CUR_END && work)
+	{
+		CUR_END = Math.min(CUR_END, Date.now());
+		data = format_time(CUR_START) + '~' + format_time(CUR_END) +
+			' (' + format_countdown(CUR_END - CUR_START) + ')' +
+			' - ' + work;
+		if (CUR_INT)
+		{
+			data += ' [' + CUR_INT + ']';
+		}
+
+		var key = 'date_' + Math.floor(CUR_START / 86400000);
+		if (!window.localStorage[key])
+		{
+			window.localStorage[key] = data;
+		}
+		else
+		{
+			window.localStorage[key] += '\n' + data;
+		}
+
+		$('today').innerText = window.localStorage[key];
+	}
+	window.localStorage.date_temp = '';
+	CUR_START = CUR_END = CUR_INT = 0;
+	// CUR_WORK = '';
+}
+
+var DISPLAY_TIMER = 0;
+
+function log_temp()
+{
+	window.localStorage.date_temp = [CUR_START, CUR_END, CUR_TIME, CUR_INT, CUR_WORK].join(' ');
+
+
+	var time = CUR_END - Date.now();
+	if (time > 0)
+	{
+		TIMER = setTimeout(log_time_end, time);
+		if (!DISPLAY_TIMER)
+		{
+			DISPLAY_TIMER = setInterval(show_infomation, 1000);
+		}
+		show_infomation();
+	}
+	else
+	{
+		log_time_end();
+	}
+}
+
+function show_infomation()
+{
+	if (CUR_END <= 0)
+	{
+		if (DISPLAY_TIMER)
+		{
+			clearInterval(DISPLAY_TIMER);
+			DISPLAY_TIMER = 0;
+		}
+	}
+
+	var text = '开始时间: ' + format_time(CUR_START) + '\n' +
+		'结束时间: ' + format_time(CUR_END) + '\n' +
+		'任务内容: ' + CUR_WORK;
+
+	$('int_btn').innerText = '打扰' + (CUR_INT ? (' (' + CUR_INT + ')') : '');
+	$('current').innerText = text;
+	$('countdown').innerText = format_countdown(CUR_END - Date.now());
+}
+
+function format_time(time)
+{
+	var d = new Date(time);
+	return ('0'+d.getHours()).slice(-2) + ':' +
+		('0'+d.getMinutes()).slice(-2) + ':' +
+		('0'+d.getSeconds()).slice(-2);
+}
+
+function format_countdown(time)
+{
+	if (time > 0)
+	{
+		time /= 1000;
+		return (time >= 3600 ? (Math.floor(time / 3600) + ':') : '') +
+			('0' + Math.floor((time / 60) % 60)).slice(-2) + ':' +
+			('0' + Math.floor(time % 60)).slice(-2);
+	}
+	else
+	{
+		return '00:00';
+	}
+}
+
+function $(id)
+{
+	return document.getElementById(id);
+}
+
+</script>
+<style type="text/css">
+  * {
+  	font-size: 12px;
+  	font-family: "微软雅黑";
+  }
+  button {
+  	font-size: 18px;
+  	margin: 5px;
+  }
+  #current {
+  	padding-top: 10px;
+  	height: 80px;
+  	font-size: 16px;
+  }
+  #countdown {
+  	float: left;
+  	text-align: center;
+  	min-width: 200px;
+  	font-size: 60px;
+  	font-weight: bold;
+  	margin: 0 0.5em;
+  }
+</style>
+</head>
+<body>
+	<div style="float:left;">
+		<button onclick="log_new()">记录/切换任务</button>
+		<div>
+			<button onclick="log_cancel()">终止任务</button>
+			<button id="int_btn" onclick="log_interup()">打扰</button>
+		</div>
+	</div>
+	<div id="countdown"></div>
+	<div id="current"></div>
+	<hr>
+	<div id="today"></div>
+</body>
+</html>
+<script type="text/javascript">
+(function(){
+	if (window.localStorage.date_temp)
+	{
+		var match = window.localStorage.date_temp.match(/^(\d+) (\d+) (\d+) (\d+) (.*)$/);
+		if (match)
+		{
+			CUR_START = +match[1];
+			CUR_END = +match[2];
+			CUR_TIME = +match[3];
+			CUR_INT = +match[4];
+			CUR_WORK = match[5];
+			log_temp();
+		}
+	}
+	var key = 'date_' + Math.floor(Date.now() / 86400000);
+	$('today').innerText = window.localStorage[key] || '';
+
+	if (window.Notification)
+	{
+		if (Notification.permission !== 'denied') {
+			Notification.requestPermission();
+		}
+	}
+})();
+
+</script>
