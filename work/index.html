@@ -148,25 +148,29 @@ function log_work(work)
 	if (CUR_START && CUR_END && work)
 	{
 		CUR_END = Math.min(CUR_END, Date.now());
-		data = format_time(CUR_START) + '~' + format_time(CUR_END) +
-			' (' + format_countdown(CUR_END - CUR_START) + ')' +
-			' - ' + work;
-		if (CUR_INT)
+		if (CUR_END - CUR_START > 60e3)
 		{
-			data += ' [' + CUR_INT + ']';
-		}
+			// only log task period more then one minute
+			data = format_time(CUR_START) + '~' + format_time(CUR_END) +
+				' (' + format_countdown(CUR_END - CUR_START) + ')' +
+				' - ' + work;
+			if (CUR_INT)
+			{
+				data += ' [' + CUR_INT + ']';
+			}
 
-		var key = 'date_' + Math.floor(CUR_START / 86400000);
-		if (!window.localStorage[key])
-		{
-			window.localStorage[key] = data;
-		}
-		else
-		{
-			window.localStorage[key] += '\n' + data;
-		}
+			var key = 'date_' + Math.floor(CUR_START / 86400000);
+			if (!window.localStorage[key])
+			{
+				window.localStorage[key] = data;
+			}
+			else
+			{
+				window.localStorage[key] += '\n' + data;
+			}
 
-		$('today').innerText = window.localStorage[key];
+			$('today').innerText = window.localStorage[key];
+		}
 	}
 	window.localStorage.date_temp = '';
 	CUR_START = CUR_END = CUR_INT = 0;
