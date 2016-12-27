@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Random String Generator</title>
+	<style type="text/css">
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 14px; }
+    h3 { margin: 10px 5px; }
+	</style>
+</head>
+<body>
+<h3>Chars</h3>
+<label><input type="checkbox" id="char-lower"> 小写字母</label>
+<label><input type="checkbox" id="char-upper"> 大写字母</label>
+<label><input type="checkbox" id="char-number"> 数字</label>
+<label><input type="checkbox" id="char-mark"> 标点符号</label>
+
+<h3>Length</h3>
+<input type="text" id="len">
+
+<h3><button onclick="gen()">Generator</button></h3>
+
+<input type="text" id="res" onfocus="this.setSelectionRange(0,99999)" size="100">
+</body>
+</html>
+<script type="text/javascript">
+function $(id) {
+  return document.getElementById(id)
+}
+function gen() {
+	var len = +$('len').value || 0;
+	var set = '';
+	if ($('char-lower').checked) {
+		set += 'abcdefghijklmnopqrstuvwxyz';
+	}
+	if ($('char-upper').checked) {
+		set += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+	}
+	if ($('char-number').checked) {
+		set += '0123456789';
+	}
+	if ($('char-mark').checked) {
+		set += '`~!@#$%^&*()-_=+,./<>?;:\'"[]{}\\|';
+	}
+	var set_len = set.length;
+	var code = '';
+
+	if (set_len > 0) {
+		while (len --> 0) {
+			code += set[Math.floor(Math.random() * set_len)];
+		}
+	}
+	$('res').value = code;
+	$('res').setSelectionRange(0, 99999);
+}
+</script>
